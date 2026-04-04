@@ -1,10 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Bell, AlertTriangle, MapPin, Phone, Clock, UserX,
-  CheckCircle, Filter, Search, ChevronDown
+  CheckCircle, Filter, Search, ChevronDown, Loader2
 } from 'lucide-react';
+import { useSupabaseQuery, SUPABASE_CONFIGURED } from '@/hooks/useSupabaseQuery';
+import { getNotifications, markNotificationRead as markReadQuery } from '@/lib/supabase/queries';
+import { createClient } from '@/lib/supabase/client';
 
 type NotifType = 'service_not_started' | 'perimeter_exit' | 'emergency' | 'incident' | 'interruption' | 'early_departure' | 'leave_request' | 'expiration';
 
@@ -41,11 +44,87 @@ const mockNotifications: Notification[] = [
   { id: '8', type: 'early_departure', title: 'Départ anticipé', body: 'Aissatou B. a terminé son service 45 minutes avant l\'heure prévue — Hôpital Saint-Louis', agent: 'Aissatou B.', site: 'Hôpital Saint-Louis', time: 'Hier', isRead: true },
 ];
 
+/** Map Supabase notification row to local shape */
+function mapNotification(r: Record<string, unknown>): Notification {
+  // Map the Supabase notification type to the local type
+  const typeMap: Record<string, NotifType> = {
+    assignment: 'service_not_started',
+    schedule_change: 'service_not_started',
+    clock_reminder: 'service_not_started',
+    incident: 'incident',
+    leave_request: 'leave_request',
+    leave_response: 'leave_request',
+    announcement: 'expiration',
+    message: 'leave_request',
+    system: 'expiration',
+  };
+
+  const createdAt = r.created_at as string;
+  const now = new Date();
+  const created = new Date(createdAt);
+  const diffMs = now.getTime() - created.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  let timeLabel: string;
+  if (diffMin < 60) timeLabel = `Il y a ${diffMin} min`;
+  else if (diffMin < 1440) timeLabel = `Il y a ${Math.floor(diffMin / 60)}h`;
+  else timeLabel = 'Hier';
+
+  return {
+    id: r.id as string,
+    type: typeMap[(r.type as string) ?? 'system'] ?? 'expiration',
+    title: r.title as string,
+    body: r.body as string,
+    time: timeLabel,
+    isRead: (r.read as boolean) ?? false,
+  };
+}
+
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
   const [filter, setFilter] = useState<NotifType | 'all'>('all');
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+
+  // Fetch notifications from Supabase (using a placeholder userId for now)
+  const { data: supabaseData, loading, error } = useSupabaseQuery(
+    (supabase) => getNotifications(supabase, 'current-user'),
+    []
+  );
+
+  // Update local state when Supabase data arrives
+  useEffect(() => {
+    if (supabaseData && supabaseData.length > 0) {
+      setNotifications(
+        (supabaseData as unknown as Record<string, unknown>[]).map(mapNotification)
+      );
+    }
+  }, [supabaseData]);
+
+  // Subscribe to real-time notifications
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel('notifications-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+        },
+        (payload) => {
+          const newNotif = mapNotification(payload.new as Record<string, unknown>);
+          setNotifications((prev) => [newNotif, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -55,13 +134,37 @@ export default function NotificationsPage() {
     return true;
   });
 
-  const markAsRead = (id: string) => {
+  const markAsRead = useCallback(async (id: string) => {
+    // Update local state immediately
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-  };
 
-  const markAllAsRead = () => {
+    // Persist to Supabase
+    if (SUPABASE_CONFIGURED) {
+      try {
+        const supabase = createClient();
+        await markReadQuery(supabase, id);
+      } catch (err) {
+        console.error('Erreur lors du marquage de la notification :', err);
+      }
+    }
+  }, []);
+
+  const markAllAsRead = useCallback(async () => {
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-  };
+
+    // Persist to Supabase
+    if (SUPABASE_CONFIGURED) {
+      try {
+        const supabase = createClient();
+        const unreadIds = notifications.filter(n => !n.isRead).map(n => n.id);
+        for (const id of unreadIds) {
+          await markReadQuery(supabase, id);
+        }
+      } catch (err) {
+        console.error('Erreur lors du marquage des notifications :', err);
+      }
+    }
+  }, [notifications]);
 
   return (
     <div className="space-y-4">
@@ -78,6 +181,21 @@ export default function NotificationsPage() {
           </button>
         )}
       </div>
+
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 size={24} className="animate-spin text-primary-500" />
+          <span className="ml-2 text-muted text-sm">Chargement des notifications...</span>
+        </div>
+      )}
+
+      {/* Error banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+          {error} — Affichage des données de démonstration.
+        </div>
+      )}
 
       {/* Search + Filter */}
       <div className="bg-surface rounded-card shadow-card p-4">
