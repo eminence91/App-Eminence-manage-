@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Plus } from 'lucide-react';
+import { Settings, Plus, Loader2 } from 'lucide-react';
 import DashboardGrid, { type WidgetConfig } from '@/components/dashboard/DashboardGrid';
+import DashboardDataProvider, { useDashboardData } from '@/components/dashboard/DashboardDataProvider';
 import WidgetServicesJour from '@/components/dashboard/widgets/WidgetServicesJour';
 import WidgetAgentsEnPoste from '@/components/dashboard/widgets/WidgetAgentsEnPoste';
 import WidgetAlertes from '@/components/dashboard/widgets/WidgetAlertes';
@@ -53,9 +54,18 @@ function renderWidget(widget: WidgetConfig) {
 }
 
 export default function DashboardPage() {
+  return (
+    <DashboardDataProvider>
+      <DashboardContent />
+    </DashboardDataProvider>
+  );
+}
+
+function DashboardContent() {
   const [editMode, setEditMode] = useState(false);
   const [widgets, setWidgets] = useState<WidgetConfig[]>(defaultWidgets);
   const [hydrated, setHydrated] = useState(false);
+  const { loading: statsLoading, error: statsError } = useDashboardData();
 
   useEffect(() => {
     try {
@@ -137,6 +147,19 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* Supabase loading / error indicators */}
+      {statsLoading && (
+        <div className="flex items-center gap-2 text-sm text-muted">
+          <Loader2 size={16} className="animate-spin" />
+          Chargement des statistiques en temps réel...
+        </div>
+      )}
+      {statsError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+          {statsError} — Affichage des données de démonstration.
+        </div>
+      )}
 
       {/* Hidden widgets restore panel */}
       {editMode && hiddenWidgets.length > 0 && (
