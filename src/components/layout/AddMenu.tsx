@@ -27,6 +27,23 @@ import {
   Megaphone,
   X,
 } from "lucide-react";
+import ServiceForm from "@/components/forms/ServiceForm";
+import ClientForm from "@/components/forms/ClientForm";
+import SiteForm from "@/components/forms/SiteForm";
+import CollaborateurForm from "@/components/forms/CollaborateurForm";
+import IndisponibiliteForm from "@/components/forms/IndisponibiliteForm";
+import DemandeForm from "@/components/forms/DemandeForm";
+import BonInterventionForm from "@/components/forms/BonInterventionForm";
+
+type FormKey =
+  | "service"
+  | "client"
+  | "site"
+  | "collaborateur"
+  | "indisponibilite"
+  | "demande-collaborateur"
+  | "bon-intervention"
+  | null;
 
 interface AddMenuProps {
   className?: string;
@@ -111,8 +128,20 @@ const sections: AddMenuSection[] = [
   },
 ];
 
+/** Correspondance label → clé de formulaire */
+const labelToFormKey: Record<string, FormKey> = {
+  "Service": "service",
+  "Client": "client",
+  "Site": "site",
+  "Collaborateur": "collaborateur",
+  "Indisponibilité": "indisponibilite",
+  "Demande collaborateur": "demande-collaborateur",
+  "Bon d'intervention": "bon-intervention",
+};
+
 export default function AddMenu({ className = "", onClose }: AddMenuProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeForm, setActiveForm] = useState<FormKey>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -188,8 +217,11 @@ export default function AddMenu({ className = "", onClose }: AddMenuProps) {
                 <button
                   key={item.label}
                   onClick={() => {
+                    const formKey = labelToFormKey[item.label] ?? null;
+                    if (formKey) {
+                      setActiveForm(formKey);
+                    }
                     onClose();
-                    // Navigation or modal open logic would go here
                   }}
                   className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-primary-50 hover:text-primary-600 transition-colors"
                 >
@@ -207,6 +239,35 @@ export default function AddMenu({ className = "", onClose }: AddMenuProps) {
           </div>
         )}
       </div>
+      {/* --- Modales de formulaires --- */}
+      <ServiceForm
+        isOpen={activeForm === "service"}
+        onClose={() => setActiveForm(null)}
+      />
+      <ClientForm
+        isOpen={activeForm === "client"}
+        onClose={() => setActiveForm(null)}
+      />
+      <SiteForm
+        isOpen={activeForm === "site"}
+        onClose={() => setActiveForm(null)}
+      />
+      <CollaborateurForm
+        isOpen={activeForm === "collaborateur"}
+        onClose={() => setActiveForm(null)}
+      />
+      <IndisponibiliteForm
+        isOpen={activeForm === "indisponibilite"}
+        onClose={() => setActiveForm(null)}
+      />
+      <DemandeForm
+        isOpen={activeForm === "demande-collaborateur"}
+        onClose={() => setActiveForm(null)}
+      />
+      <BonInterventionForm
+        isOpen={activeForm === "bon-intervention"}
+        onClose={() => setActiveForm(null)}
+      />
     </div>
   );
 }
