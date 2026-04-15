@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { refreshSession } from '@/lib/supabase/middleware';
 
+const SUPABASE_CONFIGURED = !!(
+  process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
 // Routes that do not require authentication
 const PUBLIC_ROUTES = [
   '/login',
@@ -19,6 +23,17 @@ export async function middleware(request: NextRequest) {
 
   // Skip middleware for static assets and webhook endpoints
   if (IGNORED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.next();
+  }
+
+  // Demo mode: if Supabase is not configured, allow all routes (mock data)
+  if (!SUPABASE_CONFIGURED) {
+    // Redirect root to /dashboard for demo purposes
+    if (pathname === '/') {
+      const url = request.nextUrl.clone();
+      url.pathname = '/dashboard';
+      return NextResponse.redirect(url);
+    }
     return NextResponse.next();
   }
 
